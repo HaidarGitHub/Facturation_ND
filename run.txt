@@ -1,0 +1,13 @@
+@echo off
+
+echo Starting Backend...
+powershell -WindowStyle Hidden -Command "Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoExit','-Command','cd ''C:\Users\aouer\Desktop\host_nach\back-end''; uv run python app.py'"
+
+timeout /t 3 >nul
+
+echo Starting Frontend...
+powershell -WindowStyle Hidden -Command "Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoExit','-Command','cd ''C:\Users\aouer\Desktop\host_nach\front-end''; npm run dev'"
+
+timeout /t 5 >nul
+
+start http://localhost:5173
