@@ -252,7 +252,7 @@ const Candidates = ({
                     overflow: "visible"
                   }}
                 >
-                  <div style={{ display: "flex", gap: "4px" }}>
+                  <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
                     <Button
                       variant="info"
                       size="sm"
@@ -269,47 +269,50 @@ const Candidates = ({
                     </Button>
                     {canUpdate && (
                       <>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      style={appStyles.button}
-                      onClick={() => handleOpenCopyCandidate(candidate)}
-                    >
-                      Copier
-                    </Button>
-                    <DropdownButton
-                      align="end"
-                      container="body"
-                      size="sm"
-                      title="Se déplacer vers"
-                      popperConfig={{
-                        modifiers: [
-                          {
-                            name: "preventOverflow",
-                            options: { boundary: document.body }
-                          }
-                        ]
-                      }}
-                    >
-                      {services.map((service) => (
-                        <Dropdown.Item
-                          key={service.id}
-                          onClick={() => handleMoveCandidate(candidate, service.id)}
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          style={appStyles.button}
+                          onClick={() => handleOpenCopyCandidate(candidate)}
                         >
-                          {service.name}
-                        </Dropdown.Item>
-                      ))}
-                    </DropdownButton>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      style={appStyles.button}
-                      onClick={() => confirmDeleteCandidate(candidate.id)}
-                    >
-                      Supprimer
-                    </Button>
+                          Copier
+                        </Button>
+                        <DropdownButton
+                          align="end"
+                          container="body"
+                          size="sm"
+                          title="Se déplacer vers"
+                          popperConfig={{
+                            modifiers: [
+                              {
+                                name: "preventOverflow",
+                                options: { boundary: document.body }
+                              }
+                            ]
+                          }}
+                        >
+                          {services.map((service) => (
+                            <Dropdown.Item
+                              key={service.id}
+                              onClick={() => handleMoveCandidate(candidate, service.id)}
+                            >
+                              {service.name}
+                            </Dropdown.Item>
+                          ))}
+                        </DropdownButton>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          style={appStyles.button}
+                          onClick={() => confirmDeleteCandidate(candidate.id)}
+                        >
+                          Supprimer
+                        </Button>
                       </>
                     )}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '6px' }}>
+                    {candidate.createdByUser ? `Créé par: ${candidate.createdByUser}` : 'Créé par: —'}
                   </div>
                 </td>
               </tr>

@@ -42,6 +42,7 @@ function App() {
     phone: "",
     country: "",
     status: "En cours",
+    createdAt: new Date().toISOString().slice(0, 16),
     service_id: null,
     type_equivalence: ""
   });
@@ -60,6 +61,7 @@ function App() {
     phone: "",
     country: "",
     status: "En cours",
+    createdAt: new Date().toISOString().slice(0, 16),
     service_id: null,
     type_equivalence: ""
   });
@@ -71,6 +73,7 @@ function App() {
     phone: "",
     country: "",
     status: "En cours",
+    createdAt: new Date().toISOString().slice(0, 16),
     service_id: null,
     type_equivalence: ""
   });
@@ -88,6 +91,8 @@ function App() {
     totalExpenses: 0,
     serviceStats: [],
   });
+  const [dashboardYear, setDashboardYear] = useState("");
+  const [dashboardMonth, setDashboardMonth] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(checkAuth());
   const userIsAdmin = isAdmin();
   const username = getUsername();
@@ -164,9 +169,14 @@ function App() {
 
   const refreshDashboardStats = async () => {
     try {
+      const params = new URLSearchParams();
+      if (dashboardYear) params.set("year", dashboardYear);
+      if (dashboardMonth) params.set("month", dashboardMonth);
+      const dashboardQuery = params.toString() ? `?${params.toString()}` : "";
+
       const calls = [api.get(`${API_BASE_URL}/services`)];
       if (userIsAdmin) {
-        calls.push(api.get(`${API_BASE_URL}/dashboard`));
+        calls.push(api.get(`${API_BASE_URL}/dashboard${dashboardQuery}`));
         calls.push(api.get(`${API_BASE_URL}/general-expenses`));
       }
       const [servicesResponse, dashboardResponse, generalExpensesResponse] = await Promise.all(calls);
@@ -192,7 +202,7 @@ function App() {
     if (isAuthenticated) {
       refreshDashboardStats();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, dashboardYear, dashboardMonth, userIsAdmin]);
 
   useEffect(() => {
     const initialPage = getPageFromPath(window.location.pathname);
@@ -389,6 +399,7 @@ function App() {
     phone: "",
     country: "",
     status: "En cours",
+    createdAt: new Date().toISOString().slice(0, 16),
     service_id: selectedService ? selectedService.id : null,
     type_equivalence: ""
   });
@@ -448,6 +459,7 @@ function App() {
     try {
       const candidateData = {
         ...formData,
+        createdAt: formData.createdAt || new Date().toISOString().slice(0, 16),
         service_id: selectedService.id
       };
       await api.post(`${API_BASE_URL}/candidates`, candidateData);
@@ -461,6 +473,7 @@ function App() {
         phone: "",
         country: "",
         status: "En cours",
+        createdAt: new Date().toISOString().slice(0, 16),
         service_id: selectedService ? selectedService.id : null,
         type_equivalence: ""
       });
@@ -491,6 +504,7 @@ function App() {
         phone: "",
         country: "",
         status: "En cours",
+        createdAt: new Date().toISOString().slice(0, 16),
         service_id: selectedService ? selectedService.id : null,
         type_equivalence: ""
       });
@@ -836,6 +850,10 @@ function App() {
             appStyles={appStyles}
             dashboardStats={dashboardStats}
             generalExpenses={generalExpenses}
+            selectedYear={dashboardYear}
+            setSelectedYear={setDashboardYear}
+            selectedMonth={dashboardMonth}
+            setSelectedMonth={setDashboardMonth}
             onAddGeneralExpense={handleAddGeneralExpense}
             onEditGeneralExpense={handleEditGeneralExpense}
             onDeleteGeneralExpense={handleDeleteGeneralExpense}

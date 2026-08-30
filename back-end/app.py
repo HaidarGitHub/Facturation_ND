@@ -82,6 +82,21 @@ def normalize_required_int(value, default=0):
     except (TypeError, ValueError):
         return default
 
+
+def ensure_candidate_creator_column():
+    """Add the created_by_user_id column to existing databases created before this field existed."""
+    try:
+        inspector = db.inspect(db.engine)
+        table_names = set(inspector.get_table_names())
+        if 'candidate' not in table_names:
+            return
+        columns = {column['name'] for column in inspector.get_columns('candidate')}
+        if 'created_by_user_id' not in columns:
+            with db.engine.begin() as connection:
+                connection.execute(db.text('ALTER TABLE candidate ADD COLUMN created_by_user_id INTEGER'))
+    except Exception:
+        pass
+
 # Use local SQLite by default. Only use DATABASE_URL when explicitly requested.
 use_remote_db = os.getenv('USE_REMOTE_DB', '').lower() in ('1', 'true', 'yes')
 if use_remote_db:
@@ -107,6 +122,10 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db.init_app(app)
 app.register_blueprint(admin_bp)
+
+with app.app_context():
+    db.create_all()
+    ensure_candidate_creator_column()
 
 # ---------------------------------------------------------------------------
 # Swagger / OpenAPI docs — visit /apidocs/ once the server is running
@@ -317,6 +336,8 @@ def get_candidates():
         'country': c.country,
         'status': c.status,
         'service_id': c.service_id,
+        'createdByUserId': c.created_by_user_id,
+        'createdByUser': c.creator.username if c.creator else None,
         'createdAt': c.created_at.isoformat() if c.created_at else None,
         'note': c.note,
         'terminatedAt': c.terminated_at.isoformat() if c.terminated_at else None,
@@ -361,6 +382,15 @@ def add_candidate():
     if not user_can_access(g.current_user, data.get('service_id'), 'update'):
         return jsonify({'message': 'No update access to this service'}), 403
 
+    created_at_raw = data.get('createdAt') or data.get('created_at')
+    if created_at_raw:
+        try:
+            created_at_value = datetime.fromisoformat(created_at_raw.replace('Z', '+00:00'))
+        except ValueError:
+            created_at_value = datetime.utcnow()
+    else:
+        created_at_value = datetime.utcnow()
+
     candidate = Candidate(
         first_name=data['firstName'],
         last_name=data['lastName'],
@@ -369,6 +399,8 @@ def add_candidate():
         country=data['country'],
         status=data['status'],
         service_id=data['service_id'],
+        created_by_user_id=g.current_user.id,
+        created_at=created_at_value,
         note=data.get('note'),
         terminated_at=datetime.utcnow() if data.get('status') == 'Terminé' else None,
         type_equivalence=data.get('type_equivalence')
@@ -418,6 +450,12 @@ def update_candidate(id):
     candidate.country = data['country']
     candidate.status = data['status']
     candidate.service_id = data['service_id']
+    created_at_raw = data.get('createdAt') or data.get('created_at')
+    if created_at_raw:
+        try:
+            candidate.created_at = datetime.fromisoformat(created_at_raw.replace('Z', '+00:00'))
+        except ValueError:
+            pass
     candidate.note = data.get('note')
     candidate.type_equivalence = data.get('type_equivalence')
     if data['status'] == 'Terminé' and (not candidate.terminated_at):
@@ -931,9 +969,45 @@ def get_dashboard_stats():
       200: {description: Dashboard statistics}
       403: {description: Admin access required}
     """
+    selected_year = request.args.get('year', type=int)
+    selected_month = request.args.get('month', type=int)
+
     services = Service.query.all()
     candidates = Candidate.query.all()
     general_expenses = GeneralExpense.query.all()
+
+    def matches_period(date_value):
+        if selected_year is None and selected_month is None:
+            return True
+        if date_value in (None, ""):
+            return False
+
+        try:
+            if hasattr(date_value, 'year'):
+                dt = date_value
+            else:
+                dt = datetime.fromisoformat(str(date_value).replace('Z', '+00:00'))
+        except ValueError:
+            try:
+                dt = datetime.strptime(str(date_value), '%Y-%m-%d')
+            except ValueError:
+                return False
+
+        if selected_year is not None and dt.year != selected_year:
+            return False
+        if selected_month is not None and dt.month != selected_month:
+            return False
+        return True
+
+    if selected_year is not None or selected_month is not None:
+        candidates = [
+            candidate for candidate in candidates
+            if candidate.created_at and matches_period(candidate.created_at)
+        ]
+        general_expenses = [
+            item for item in general_expenses
+            if matches_period(item.date)
+        ]
 
     def calculate_ht_value(item):
         if item.amountHT is not None:
@@ -962,20 +1036,25 @@ def get_dashboard_stats():
     for service in services:
         service_candidates = [candidate for candidate in candidates if candidate.service_id == service.id]
 
+        def date_matches_item(item):
+            if selected_year is None and selected_month is None:
+                return True
+            return matches_period(item.date if hasattr(item, 'date') else item.created_at)
+
         revenueHT = sum(
-            sum(calculate_ht_value(revenue) for revenue in candidate.revenues)
+            sum(calculate_ht_value(revenue) for revenue in candidate.revenues if date_matches_item(revenue))
             for candidate in service_candidates
         )
         revenueTTC = sum(
-            sum(calculate_ttc_value(revenue) for revenue in candidate.revenues)
+            sum(calculate_ttc_value(revenue) for revenue in candidate.revenues if date_matches_item(revenue))
             for candidate in service_candidates
         )
         expensesHT = sum(
-            sum(calculate_ht_value(expense) for expense in candidate.expenses)
+            sum(calculate_ht_value(expense) for expense in candidate.expenses if date_matches_item(expense))
             for candidate in service_candidates
         )
         expensesTTC = sum(
-            sum(calculate_ttc_value(expense) for expense in candidate.expenses)
+            sum(calculate_ttc_value(expense) for expense in candidate.expenses if date_matches_item(expense))
             for candidate in service_candidates
         )
 

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Container, Row, Col, Card, Table, Button, Modal } from "react-bootstrap";
+import { Container, Row, Col, Card, Table, Button, Modal, Form } from "react-bootstrap";
 import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import ExpenseForm from "./ExpenseForm";
 
@@ -18,9 +18,36 @@ const CHART_COLORS = [
   "#4f46e5", // indigo
 ];
 
-const Dashboard = ({ dashboardStats, generalExpenses = [], onAddGeneralExpense, onEditGeneralExpense, onDeleteGeneralExpense }) => {
+const Dashboard = ({
+  dashboardStats,
+  generalExpenses = [],
+  selectedYear,
+  setSelectedYear,
+  selectedMonth,
+  setSelectedMonth,
+  onAddGeneralExpense,
+  onEditGeneralExpense,
+  onDeleteGeneralExpense,
+}) => {
   const [showGeneralExpenseModal, setShowGeneralExpenseModal] = useState(false);
   const [editingGeneralExpense, setEditingGeneralExpense] = useState(null);
+
+  const monthOptions = [
+    { value: "1", label: "Janvier" },
+    { value: "2", label: "Février" },
+    { value: "3", label: "Mars" },
+    { value: "4", label: "Avril" },
+    { value: "5", label: "Mai" },
+    { value: "6", label: "Juin" },
+    { value: "7", label: "Juillet" },
+    { value: "8", label: "Août" },
+    { value: "9", label: "Septembre" },
+    { value: "10", label: "Octobre" },
+    { value: "11", label: "Novembre" },
+    { value: "12", label: "Décembre" },
+  ];
+
+  const yearOptions = Array.from({ length: 11 }, (_, index) => new Date().getFullYear() - 5 + index);
 
   const defaultGeneralExpense = {
     description: "",
@@ -51,7 +78,33 @@ const Dashboard = ({ dashboardStats, generalExpenses = [], onAddGeneralExpense, 
     setEditingGeneralExpense(null);
   };
 
-  const totalGeneralExpenses = (generalExpenses || []).reduce((sum, item) => sum + Number(item.amountTTC || item.amount || 0), 0);
+  const filteredGeneralExpenses = (generalExpenses || []).filter((item) => {
+    if (!item?.date) return false;
+
+    const dateValue = item.date.includes('T') ? item.date : `${item.date}T00:00:00`;
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return false;
+
+    if (selectedYear && String(date.getFullYear()) !== String(selectedYear)) {
+      return false;
+    }
+
+    if (selectedMonth && String(date.getMonth() + 1).padStart(2, '0') !== String(selectedMonth).padStart(2, '0')) {
+      return false;
+    }
+
+    return true;
+  });
+
+  const totalGeneralExpensesTTC = filteredGeneralExpenses.reduce((sum, item) => {
+    const amountTTC = Number(item.amountTTC ?? item.amount ?? 0);
+    return sum + amountTTC;
+  }, 0);
+
+  const totalGeneralExpensesHT = filteredGeneralExpenses.reduce((sum, item) => {
+    const amountHT = Number(item.amountHT ?? item.amount ?? 0);
+    return sum + amountHT;
+  }, 0);
 
   return (
     <>
@@ -195,6 +248,48 @@ const Dashboard = ({ dashboardStats, generalExpenses = [], onAddGeneralExpense, 
       {/* Dashboard Content */}
       <Container fluid>
         <h2 className="dashboard-heading">Tableau de Bord</h2>
+        <div className="d-flex flex-wrap align-items-end gap-3 mb-4">
+          <Form.Group style={{ minWidth: 140 }}>
+            <Form.Label className="small text-muted mb-1">Année</Form.Label>
+            <Form.Select
+              value={selectedYear}
+              onChange={(e) => {
+                setSelectedYear(e.target.value);
+                if (e.target.value !== selectedYear) setSelectedMonth("");
+              }}
+            >
+              <option value="">Toutes</option>
+              {yearOptions.map((year) => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </Form.Select>
+          </Form.Group>
+
+          <Form.Group style={{ minWidth: 160 }}>
+            <Form.Label className="small text-muted mb-1">Mois</Form.Label>
+            <Form.Select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              disabled={!selectedYear}
+            >
+              <option value="">Tous</option>
+              {monthOptions.map((month) => (
+                <option key={month.value} value={month.value}>{month.label}</option>
+              ))}
+            </Form.Select>
+          </Form.Group>
+
+          <Button
+            variant="outline-secondary"
+            size="sm"
+            onClick={() => {
+              setSelectedYear("");
+              setSelectedMonth("");
+            }}
+          >
+            Réinitialiser
+          </Button>
+        </div>
         <Row xs={1} md={2} lg={5} className="g-4 mb-4">
           <Col>
             <Card className="dashboard-card">
@@ -277,12 +372,12 @@ const Dashboard = ({ dashboardStats, generalExpenses = [], onAddGeneralExpense, 
             </tr>
           </thead>
           <tbody>
-            {generalExpenses.length === 0 ? (
+            {filteredGeneralExpenses.length === 0 ? (
               <tr>
-                <td colSpan="6" className="text-center">Aucune dépense générale enregistrée.</td>
+                <td colSpan="6" className="text-center">Aucune dépense générale enregistrée pour cette période.</td>
               </tr>
             ) : (
-              generalExpenses.map((expense) => (
+              filteredGeneralExpenses.map((expense) => (
                 <tr key={expense.id}>
                   <td>{expense.date}</td>
                   <td>{expense.description}</td>
@@ -307,8 +402,11 @@ const Dashboard = ({ dashboardStats, generalExpenses = [], onAddGeneralExpense, 
         <div className="mb-4">
           <Card className="dashboard-card">
             <Card.Body>
-              <Card.Title>Total Dépenses Générales</Card.Title>
-              <Card.Text className="display-6">{totalGeneralExpenses.toFixed(2)} DT</Card.Text>
+              <Card.Title>Total Dépenses Générales (TTC)</Card.Title>
+              <Card.Text className="display-6">{(totalGeneralExpensesTTC || 0).toFixed(2)} DT</Card.Text>
+              <hr style={{ margin: '0.5rem 0' }} />
+              <Card.Title style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>Total Dépenses Générales HT</Card.Title>
+              <Card.Text className="display-6" style={{ fontSize: '1.5rem' }}>{(totalGeneralExpensesHT || 0).toFixed(2)} DT</Card.Text>
             </Card.Body>
           </Card>
         </div>

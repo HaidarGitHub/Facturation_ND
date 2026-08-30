@@ -57,6 +57,9 @@ const CandidateForm = ({ candidate, onSave, onCancel, selectedService }) => {
     if (!formData.country) {
       newErrors.country = "Le pays est requis";
     }
+    if (!formData.createdAt) {
+      newErrors.createdAt = "La date de création est requise";
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -133,6 +136,16 @@ const CandidateForm = ({ candidate, onSave, onCancel, selectedService }) => {
           />
         </Form.Group>
       )}
+      <Form.Group className="mb-3">
+        <Form.Label>Date de création</Form.Label>
+        <Form.Control
+          type="datetime-local"
+          value={formData.createdAt || ""}
+          onChange={(e) => handleChange(e, "createdAt")}
+          isInvalid={!!errors.createdAt}
+        />
+        <Form.Control.Feedback type="invalid">{errors.createdAt}</Form.Control.Feedback>
+      </Form.Group>
       <Form.Group className="mb-3">
         <Form.Label>Statut</Form.Label>
         <Form.Select value={formData.status} onChange={(e) => handleChange(e, "status")}> 
