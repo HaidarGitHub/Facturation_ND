@@ -17,6 +17,7 @@ from auth import (
     generate_token,
     get_permissions,
     user_can_access,
+    user_can_access_general_expenses,
 )
 from admin_routes import admin_bp
 
@@ -839,16 +840,19 @@ def delete_expense(id):
 @app.route('/api/general-expenses/', methods=['GET'])
 @app.route('/api/general_expenses', methods=['GET'])
 @token_required
-@admin_required
 def get_general_expenses():
     """
-    List general (company-wide) expenses (admin only)
+    List general (company-wide) expenses for authorized users
     ---
     tags: [General Expenses]
     security: [{Bearer: []}]
     responses:
       200: {description: List of general expenses}
+      403: {description: No access to general expenses}
     """
+    if not user_can_access_general_expenses(g.current_user, 'view'):
+        return jsonify({'message': 'No access to general expenses'}), 403
+
     general_expenses = GeneralExpense.query.order_by(GeneralExpense.date.desc(), GeneralExpense.id.desc()).all()
     return jsonify([{
         'id': item.id,
@@ -865,10 +869,9 @@ def get_general_expenses():
 @app.route('/api/general-expenses/', methods=['POST'])
 @app.route('/api/general_expenses', methods=['POST'])
 @token_required
-@admin_required
 def add_general_expense():
     """
-    Add a general expense (admin only)
+    Add a general expense for authorized users
     ---
     tags: [General Expenses]
     security: [{Bearer: []}]
@@ -880,7 +883,11 @@ def add_general_expense():
           type: object
     responses:
       201: {description: General expense created}
+      403: {description: No access to general expenses}
     """
+    if not user_can_access_general_expenses(g.current_user, 'update'):
+        return jsonify({'message': 'No update access to general expenses'}), 403
+
     data = request.json or {}
     item = GeneralExpense(
         description=data.get('description', ''),
@@ -898,10 +905,9 @@ def add_general_expense():
 @app.route('/api/general-expenses/<int:id>/', methods=['PUT'])
 @app.route('/api/general_expenses/<int:id>', methods=['PUT'])
 @token_required
-@admin_required
 def update_general_expense(id):
     """
-    Update a general expense (admin only)
+    Update a general expense for authorized users
     ---
     tags: [General Expenses]
     security: [{Bearer: []}]
@@ -917,7 +923,11 @@ def update_general_expense(id):
           type: object
     responses:
       200: {description: General expense updated}
+      403: {description: No access to general expenses}
     """
+    if not user_can_access_general_expenses(g.current_user, 'update'):
+        return jsonify({'message': 'No update access to general expenses'}), 403
+
     item = GeneralExpense.query.get_or_404(id)
     data = request.json or {}
     item.description = data.get('description', '')
@@ -933,10 +943,9 @@ def update_general_expense(id):
 @app.route('/api/general-expenses/<int:id>/', methods=['DELETE'])
 @app.route('/api/general_expenses/<int:id>', methods=['DELETE'])
 @token_required
-@admin_required
 def delete_general_expense(id):
     """
-    Delete a general expense (admin only)
+    Delete a general expense for authorized users
     ---
     tags: [General Expenses]
     security: [{Bearer: []}]
@@ -947,7 +956,11 @@ def delete_general_expense(id):
         required: true
     responses:
       200: {description: General expense deleted}
+      403: {description: No access to general expenses}
     """
+    if not user_can_access_general_expenses(g.current_user, 'update'):
+        return jsonify({'message': 'No update access to general expenses'}), 403
+
     item = GeneralExpense.query.get_or_404(id)
     db.session.delete(item)
     db.session.commit()
@@ -958,17 +971,19 @@ def delete_general_expense(id):
 # ---------------------------------------------------------------------------
 @app.route('/api/dashboard', methods=['GET'])
 @token_required
-@admin_required
 def get_dashboard_stats():
     """
-    Get aggregated dashboard statistics (admin only)
+    Get aggregated dashboard statistics for authorized users
     ---
     tags: [Dashboard]
     security: [{Bearer: []}]
     responses:
       200: {description: Dashboard statistics}
-      403: {description: Admin access required}
+      403: {description: Access to general expenses required}
     """
+    if not user_can_access_general_expenses(g.current_user, 'view'):
+        return jsonify({'message': 'No access to general expenses'}), 403
+
     selected_year = request.args.get('year', type=int)
     selected_month = request.args.get('month', type=int)
 

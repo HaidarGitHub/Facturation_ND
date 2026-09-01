@@ -64,12 +64,41 @@ def admin_required(f):
 
 
 def get_permissions(user):
-    """Returns dict like {"1": {"view": true, "update": false}, "3": {...}}"""
+    """Returns dict like {"1": {"view": true, "update": false}, "general_expenses": {"view": true}}"""
     try:
-        parsed = json.loads(user.allowed_service_ids or '{}')
+        raw = user.allowed_service_ids
+        if isinstance(raw, dict):
+            parsed = raw
+        else:
+            parsed = json.loads(raw or '{}')
     except (TypeError, ValueError):
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def normalize_general_expense_permission(entry):
+    """Normalize legacy and current permission shapes to {view, update}."""
+    if isinstance(entry, bool):
+        return {'view': entry, 'update': entry}
+    if isinstance(entry, dict):
+        return {
+            'view': bool(entry.get('view') or entry.get('update')),
+            'update': bool(entry.get('update')),
+        }
+    return {'view': False, 'update': False}
+
+
+def user_can_access_general_expenses(user, level='view'):
+    """Admins always have access; compatibility for legacy permission objects."""
+    if user.role == 'admin':
+        return True
+    perms = get_permissions(user)
+    entry = perms.get('general_expenses') or perms.get('general-expenses') or perms.get('generalExpenses') or {}
+    normalized = normalize_general_expense_permission(entry)
+
+    if level == 'view':
+        return normalized['view']
+    return normalized['update']
 
 
 def _extract_service_id(kwargs):

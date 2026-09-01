@@ -28,6 +28,8 @@ const Dashboard = ({
   onAddGeneralExpense,
   onEditGeneralExpense,
   onDeleteGeneralExpense,
+  canModifyGeneralExpenses = false,
+  showFullDashboard = true,
 }) => {
   const [showGeneralExpenseModal, setShowGeneralExpenseModal] = useState(false);
   const [editingGeneralExpense, setEditingGeneralExpense] = useState(null);
@@ -105,6 +107,113 @@ const Dashboard = ({
     const amountHT = Number(item.amountHT ?? item.amount ?? 0);
     return sum + amountHT;
   }, 0);
+
+  if (!showFullDashboard) {
+    return (
+      <>
+        <style>
+          {`
+            .dashboard-table {
+              background-color: #ffffff;
+              border-radius: 0.5rem;
+              overflow: hidden;
+              box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            .dashboard-table thead {
+              background-color: #1e293b;
+              color: #ffffff;
+            }
+            .dashboard-table th {
+              font-weight: 600;
+              padding: 1rem;
+              text-align: center;
+              vertical-align: middle;
+            }
+            .dashboard-table td {
+              padding: 1rem;
+              vertical-align: middle;
+            }
+          `}
+        </style>
+
+        <Container fluid>
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <h3 className="section-heading mb-0">Dépenses générales hors services</h3>
+            {canModifyGeneralExpenses && (
+              <Button variant="primary" onClick={openNewGeneralExpenseModal}>+ Ajouter</Button>
+            )}
+          </div>
+
+          <Table striped bordered hover className="dashboard-table mb-5">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Montant HT</th>
+                <th>TVA</th>
+                <th>Montant TTC</th>
+                {canModifyGeneralExpenses && <th>Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredGeneralExpenses.length === 0 ? (
+                <tr>
+                  <td colSpan={canModifyGeneralExpenses ? 6 : 5} className="text-center">Aucune dépense générale enregistrée pour cette période.</td>
+                </tr>
+              ) : (
+                filteredGeneralExpenses.map((expense) => (
+                  <tr key={expense.id}>
+                    <td>{expense.date}</td>
+                    <td>{expense.description}</td>
+                    <td>{Number(expense.amountHT || 0).toFixed(2)} DT</td>
+                    <td>{expense.tva ?? "-"}%</td>
+                    <td>{Number(expense.amountTTC || expense.amount || 0).toFixed(2)} DT</td>
+                    {canModifyGeneralExpenses && (
+                      <td>
+                        <div className="d-flex gap-2">
+                          <Button variant="outline-secondary" size="sm" onClick={() => openEditGeneralExpenseModal(expense)}>
+                            Modifier
+                          </Button>
+                          <Button variant="outline-danger" size="sm" onClick={() => onDeleteGeneralExpense?.(expense.id)}>
+                            Supprimer
+                          </Button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </Table>
+
+          <div className="mb-4">
+            <Card className="dashboard-card">
+              <Card.Body>
+                <Card.Title>Total Dépenses Générales (TTC)</Card.Title>
+                <Card.Text className="display-6">{(totalGeneralExpensesTTC || 0).toFixed(2)} DT</Card.Text>
+                <hr style={{ margin: '0.5rem 0' }} />
+                <Card.Title style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>Total Dépenses Générales HT</Card.Title>
+                <Card.Text className="display-6" style={{ fontSize: '1.5rem' }}>{(totalGeneralExpensesHT || 0).toFixed(2)} DT</Card.Text>
+              </Card.Body>
+            </Card>
+          </div>
+        </Container>
+        <Modal show={showGeneralExpenseModal} onHide={() => setShowGeneralExpenseModal(false)} centered>
+          <Modal.Header closeButton>
+            <Modal.Title>{editingGeneralExpense ? "Modifier la dépense générale" : "Ajouter une dépense générale"}</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <ExpenseForm
+              key={editingGeneralExpense?.id || "new-general-expense"}
+              expense={editingGeneralExpense || defaultGeneralExpense}
+              onSave={handleGeneralExpenseSave}
+              onCancel={() => setShowGeneralExpenseModal(false)}
+            />
+          </Modal.Body>
+        </Modal>
+      </>
+    );
+  }
 
   return (
     <>
@@ -358,7 +467,9 @@ const Dashboard = ({
         </Row>
         <div className="d-flex justify-content-between align-items-center mb-3">
           <h3 className="section-heading mb-0">Dépenses générales hors services</h3>
-          <Button variant="primary" onClick={openNewGeneralExpenseModal}>+ Ajouter</Button>
+          {canModifyGeneralExpenses && (
+            <Button variant="primary" onClick={openNewGeneralExpenseModal}>+ Ajouter</Button>
+          )}
         </div>
         <Table striped bordered hover className="dashboard-table mb-5">
           <thead>
@@ -385,14 +496,18 @@ const Dashboard = ({
                   <td>{expense.tva ?? "-"}%</td>
                   <td>{Number(expense.amountTTC || expense.amount || 0).toFixed(2)} DT</td>
                   <td>
-                    <div className="d-flex gap-2">
-                      <Button variant="outline-secondary" size="sm" onClick={() => openEditGeneralExpenseModal(expense)}>
-                        Modifier
-                      </Button>
-                      <Button variant="outline-danger" size="sm" onClick={() => onDeleteGeneralExpense?.(expense.id)}>
-                        Supprimer
-                      </Button>
-                    </div>
+                    {canModifyGeneralExpenses ? (
+                      <div className="d-flex gap-2">
+                        <Button variant="outline-secondary" size="sm" onClick={() => openEditGeneralExpenseModal(expense)}>
+                          Modifier
+                        </Button>
+                        <Button variant="outline-danger" size="sm" onClick={() => onDeleteGeneralExpense?.(expense.id)}>
+                          Supprimer
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="text-muted">Lecture seule</span>
+                    )}
                   </td>
                 </tr>
               ))

@@ -57,6 +57,33 @@ export function canUpdateService(serviceId) {
   return !!(entry && entry.view && entry.update);
 }
 
+function normalizeGeneralExpensesPermission(entry) {
+  if (typeof entry === 'boolean') {
+    return { view: entry, update: entry };
+  }
+  if (entry && typeof entry === 'object') {
+    return {
+      view: !!(entry.view || entry.update),
+      update: !!entry.update,
+    };
+  }
+  return { view: false, update: false };
+}
+
+export function canViewGeneralExpenses() {
+  if (isAdmin()) return true;
+  const perms = getPermissions();
+  const entry = perms.general_expenses || perms['general-expenses'] || perms.generalExpenses;
+  return normalizeGeneralExpensesPermission(entry).view;
+}
+
+export function canUpdateGeneralExpenses() {
+  if (isAdmin()) return true;
+  const perms = getPermissions();
+  const entry = perms.general_expenses || perms['general-expenses'] || perms.generalExpenses;
+  return normalizeGeneralExpensesPermission(entry).update;
+}
+
 export function getAccessibleServices(services) {
   if (isAdmin()) return services;
   return services.filter((s) => canViewService(s.id));

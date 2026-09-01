@@ -28,9 +28,11 @@ const AdminPanel = ({ appStyles, services }) => {
     password: '',
     role: 'user',
     permissions: {},
+    generalExpenseAccess: { view: false, update: false },
   });
   const [editPermissions, setEditPermissions] = useState({});
   const [editRole, setEditRole] = useState('user');
+  const [editGeneralExpenseAccess, setEditGeneralExpenseAccess] = useState({ view: false, update: false });
   const [newPassword, setNewPassword] = useState('');
 
   const currentUsername = getUsername();
@@ -58,6 +60,7 @@ const AdminPanel = ({ appStyles, services }) => {
       password: '',
       role: 'user',
       permissions: emptyPermissions(services),
+      generalExpenseAccess: { view: false, update: false },
     });
     setShowCreateModal(true);
   };
@@ -67,9 +70,15 @@ const AdminPanel = ({ appStyles, services }) => {
     setEditRole(user.role);
     const perms = emptyPermissions(services);
     Object.entries(user.permissions || {}).forEach(([id, p]) => {
+      if (id === 'general_expenses' || id === 'general-expenses') return;
       perms[id] = { view: !!p.view, update: !!p.update };
     });
+    const generalExpensePerms = (user.permissions || {}).general_expenses || (user.permissions || {})['general-expenses'] || {};
     setEditPermissions(perms);
+    setEditGeneralExpenseAccess({
+      view: !!generalExpensePerms.view,
+      update: !!generalExpensePerms.update,
+    });
     setShowEditModal(true);
   };
 
@@ -97,11 +106,21 @@ const AdminPanel = ({ appStyles, services }) => {
     setError('');
     setSuccess('');
     try {
+      const permissions = newUser.role === 'admin'
+        ? {}
+        : {
+            ...newUser.permissions,
+            general_expenses: {
+              view: !!newUser.generalExpenseAccess.view,
+              update: !!newUser.generalExpenseAccess.update,
+            },
+          };
+
       await api.post(`${API_BASE_URL}/admin/users`, {
         username: newUser.username,
         password: newUser.password,
         role: newUser.role,
-        permissions: newUser.role === 'admin' ? {} : newUser.permissions,
+        permissions,
       });
       setSuccess('Utilisateur créé avec succès.');
       setShowCreateModal(false);
@@ -116,9 +135,19 @@ const AdminPanel = ({ appStyles, services }) => {
     setError('');
     setSuccess('');
     try {
+      const permissions = editRole === 'admin'
+        ? {}
+        : {
+            ...editPermissions,
+            general_expenses: {
+              view: !!editGeneralExpenseAccess.view,
+              update: !!editGeneralExpenseAccess.update,
+            },
+          };
+
       await api.put(`${API_BASE_URL}/admin/users/${selectedUser.id}/permissions`, {
         role: editRole,
-        permissions: editRole === 'admin' ? {} : editPermissions,
+        permissions,
       });
       setSuccess('Permissions mises à jour.');
       setShowEditModal(false);
@@ -215,6 +244,7 @@ const AdminPanel = ({ appStyles, services }) => {
               <th>Utilisateur</th>
               <th>Rôle</th>
               <th>Accès services</th>
+              <th>Dépenses générales</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -232,6 +262,7 @@ const AdminPanel = ({ appStyles, services }) => {
                     <span className="text-muted">Accès complet</span>
                   ) : (
                     Object.entries(user.permissions || {})
+                      .filter(([id]) => id !== 'general_expenses' && id !== 'general-expenses')
                       .filter(([, p]) => p.view)
                       .map(([id, p]) => {
                         const service = services.find((s) => s.id === parseInt(id));
@@ -241,6 +272,13 @@ const AdminPanel = ({ appStyles, services }) => {
                           </Badge>
                         );
                       })
+                  )}
+                </td>
+                <td>
+                  {(user.role === 'admin' || !!((user.permissions || {}).general_expenses || (user.permissions || {})['general-expenses'] || {}).view) ? (
+                    <Badge bg="primary">Oui</Badge>
+                  ) : (
+                    <Badge bg="secondary">Non</Badge>
                   )}
                 </td>
                 <td style={{ ...appStyles.actionButtons, whiteSpace: 'nowrap' }}>
@@ -295,8 +333,41 @@ const AdminPanel = ({ appStyles, services }) => {
                 <option value="admin">Admin</option>
               </Form.Select>
             </Form.Group>
-            {newUser.role === 'user' &&
-              renderPermissionMatrix(newUser.permissions, (p) => setNewUser({ ...newUser, permissions: p }), false)}
+            {newUser.role === 'user' && (
+              <>
+                <Form.Group className="mb-3">
+                  <div className="d-flex gap-4 align-items-center">
+                    <Form.Check
+                      type="checkbox"
+                      label="Voir les dépenses générales"
+                      checked={!!newUser.generalExpenseAccess.view}
+                      onChange={(e) => setNewUser({
+                        ...newUser,
+                        generalExpenseAccess: {
+                          view: e.target.checked,
+                          update: e.target.checked ? newUser.generalExpenseAccess.update : false,
+                        },
+                      })}
+                    />
+                    <Form.Check
+                      type="checkbox"
+                      label="Modifier les dépenses générales"
+                      checked={!!newUser.generalExpenseAccess.update}
+                      disabled={!newUser.generalExpenseAccess.view}
+                      onChange={(e) => setNewUser({
+                        ...newUser,
+                        generalExpenseAccess: {
+                          ...newUser.generalExpenseAccess,
+                          update: e.target.checked,
+                          view: e.target.checked || newUser.generalExpenseAccess.view,
+                        },
+                      })}
+                    />
+                  </div>
+                </Form.Group>
+                {renderPermissionMatrix(newUser.permissions, (p) => setNewUser({ ...newUser, permissions: p }), false)}
+              </>
+            )}
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={() => setShowCreateModal(false)}>Annuler</Button>
@@ -318,8 +389,35 @@ const AdminPanel = ({ appStyles, services }) => {
                 <option value="admin">Admin</option>
               </Form.Select>
             </Form.Group>
-            {editRole === 'user' &&
-              renderPermissionMatrix(editPermissions, setEditPermissions, false)}
+            {editRole === 'user' && (
+              <>
+                <Form.Group className="mb-3">
+                  <div className="d-flex gap-4 align-items-center">
+                    <Form.Check
+                      type="checkbox"
+                      label="Voir les dépenses générales"
+                      checked={!!editGeneralExpenseAccess.view}
+                      onChange={(e) => setEditGeneralExpenseAccess({
+                        view: e.target.checked,
+                        update: e.target.checked ? editGeneralExpenseAccess.update : false,
+                      })}
+                    />
+                    <Form.Check
+                      type="checkbox"
+                      label="Modifier les dépenses générales"
+                      checked={!!editGeneralExpenseAccess.update}
+                      disabled={!editGeneralExpenseAccess.view}
+                      onChange={(e) => setEditGeneralExpenseAccess({
+                        ...editGeneralExpenseAccess,
+                        update: e.target.checked,
+                        view: e.target.checked || editGeneralExpenseAccess.view,
+                      })}
+                    />
+                  </div>
+                </Form.Group>
+                {renderPermissionMatrix(editPermissions, setEditPermissions, false)}
+              </>
+            )}
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={() => setShowEditModal(false)}>Annuler</Button>

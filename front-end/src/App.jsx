@@ -10,6 +10,8 @@ import {
   clearAuth,
   getAccessibleServices,
   canUpdateService,
+  canViewGeneralExpenses,
+  canUpdateGeneralExpenses,
 } from "./utils/auth";
 import AdminPanel from "./components/AdminPanel";
 import CandidateForm from "./components/CandidateForm";
@@ -95,6 +97,8 @@ function App() {
   const [dashboardMonth, setDashboardMonth] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(checkAuth());
   const userIsAdmin = isAdmin();
+  const userCanViewGeneralExpenses = canViewGeneralExpenses();
+  const userCanUpdateGeneralExpenses = canUpdateGeneralExpenses();
   const username = getUsername();
   const [logoutMessage, setLogoutMessage] = useState('');
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -175,13 +179,13 @@ function App() {
       const dashboardQuery = params.toString() ? `?${params.toString()}` : "";
 
       const calls = [api.get(`${API_BASE_URL}/services`)];
-      if (userIsAdmin) {
+      if (userIsAdmin || userCanViewGeneralExpenses) {
         calls.push(api.get(`${API_BASE_URL}/dashboard${dashboardQuery}`));
         calls.push(api.get(`${API_BASE_URL}/general-expenses`));
       }
       const [servicesResponse, dashboardResponse, generalExpensesResponse] = await Promise.all(calls);
       setServices(getAccessibleServices(servicesResponse.data));
-      if (userIsAdmin) {
+      if (userIsAdmin || userCanViewGeneralExpenses) {
         setGeneralExpenses(generalExpensesResponse.data);
         setDashboardStats({
           totalCandidates: dashboardResponse.data.totalCandidates,
@@ -202,7 +206,7 @@ function App() {
     if (isAuthenticated) {
       refreshDashboardStats();
     }
-  }, [isAuthenticated, dashboardYear, dashboardMonth, userIsAdmin]);
+  }, [isAuthenticated, dashboardYear, dashboardMonth, userIsAdmin, userCanViewGeneralExpenses]);
 
   useEffect(() => {
     const initialPage = getPageFromPath(window.location.pathname);
@@ -748,7 +752,7 @@ function App() {
           <Navbar.Toggle aria-controls="basic-navlg-nav" />
           <Navbar.Collapse id="basic-navlg-nav">
             <Nav className="me-auto">
-              {userIsAdmin && (
+              {(userIsAdmin || userCanViewGeneralExpenses) && (
                 <Nav.Link onClick={() => setCurrentPage("dashboard")} active={currentPage === "dashboard"}>
                   Tableau de Bord
                 </Nav.Link>
@@ -845,7 +849,7 @@ function App() {
       </Modal>
 
       <Container fluid>
-        {currentPage === "dashboard" && userIsAdmin && (
+        {currentPage === "dashboard" && (userIsAdmin || userCanViewGeneralExpenses) && (
           <Dashboard
             appStyles={appStyles}
             dashboardStats={dashboardStats}
@@ -857,6 +861,8 @@ function App() {
             onAddGeneralExpense={handleAddGeneralExpense}
             onEditGeneralExpense={handleEditGeneralExpense}
             onDeleteGeneralExpense={handleDeleteGeneralExpense}
+            canModifyGeneralExpenses={userIsAdmin || userCanUpdateGeneralExpenses}
+            showFullDashboard={userIsAdmin}
           />
         )}
 
