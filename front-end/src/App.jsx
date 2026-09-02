@@ -7,6 +7,7 @@ import {
   isAuthenticated as checkAuth,
   isAdmin,
   getUsername,
+  getOffice,
   clearAuth,
   getAccessibleServices,
   canUpdateService,
@@ -23,6 +24,7 @@ import Candidates from "./components/Candidates";
 import CandidateDetails from "./components/CandidateDetails";
 import Dashboard from "./components/Dashboard";
 import Login from "./components/Login";
+import OfficeComparison from "./components/OfficeComparison";
 
 // Import API configuration
 import { API_BASE_URL } from './config';
@@ -95,6 +97,8 @@ function App() {
   });
   const [dashboardYear, setDashboardYear] = useState("");
   const [dashboardMonth, setDashboardMonth] = useState("");
+  const [selectedOffice, setSelectedOffice] = useState(isAdmin() ? 'tunis' : getOffice());
+  const [officeComparison, setOfficeComparison] = useState({ tunis: {}, kebili: {} });
   const [isAuthenticated, setIsAuthenticated] = useState(checkAuth());
   const userIsAdmin = isAdmin();
   const userCanViewGeneralExpenses = canViewGeneralExpenses();
@@ -112,6 +116,8 @@ function App() {
         return "/admin";
       case "dashboard":
         return "/dashboard";
+      case "comparison":
+        return "/comparison";
       case "candidates":
         return "/candidates";
       case "candidateDetails":
@@ -128,6 +134,8 @@ function App() {
         return "admin";
       case "/dashboard":
         return "dashboard";
+      case "/comparison":
+        return "comparison";
       case "/candidates":
         return "candidates";
       case "/candidate-details":
@@ -176,12 +184,23 @@ function App() {
       const params = new URLSearchParams();
       if (dashboardYear) params.set("year", dashboardYear);
       if (dashboardMonth) params.set("month", dashboardMonth);
+      params.set("office", selectedOffice);
       const dashboardQuery = params.toString() ? `?${params.toString()}` : "";
 
       const calls = [api.get(`${API_BASE_URL}/services`)];
       if (userIsAdmin || userCanViewGeneralExpenses) {
         calls.push(api.get(`${API_BASE_URL}/dashboard${dashboardQuery}`));
-        calls.push(api.get(`${API_BASE_URL}/general-expenses`));
+        calls.push(api.get(`${API_BASE_URL}/general-expenses?office=${selectedOffice}`));
+      }
+      if (userIsAdmin) {
+        const comparisonParams = new URLSearchParams();
+        if (dashboardYear) comparisonParams.set('year', dashboardYear);
+        if (dashboardMonth) comparisonParams.set('month', dashboardMonth);
+        const [tunis, kebili] = await Promise.all([
+          api.get(`${API_BASE_URL}/dashboard?${comparisonParams.toString()}&office=tunis`),
+          api.get(`${API_BASE_URL}/dashboard?${comparisonParams.toString()}&office=kebili`),
+        ]);
+        setOfficeComparison({ tunis: tunis.data, kebili: kebili.data });
       }
       const [servicesResponse, dashboardResponse, generalExpensesResponse] = await Promise.all(calls);
       setServices(getAccessibleServices(servicesResponse.data));
@@ -206,7 +225,10 @@ function App() {
     if (isAuthenticated) {
       refreshDashboardStats();
     }
-  }, [isAuthenticated, dashboardYear, dashboardMonth, userIsAdmin, userCanViewGeneralExpenses]);
+  }, [isAuthenticated, dashboardYear, dashboardMonth, userIsAdmin, userCanViewGeneralExpenses, selectedOffice]);
+
+  const getCandidatesForService = (serviceId) =>
+    api.get(`${API_BASE_URL}/candidates?service_id=${serviceId}&office=${selectedOffice}`);
 
   useEffect(() => {
     const initialPage = getPageFromPath(window.location.pathname);
@@ -233,7 +255,7 @@ function App() {
     if (selectedService) {
       const fetchCandidates = async () => {
         try {
-          const response = await api.get(`${API_BASE_URL}/candidates?service_id=${selectedService.id}`);
+          const response = await api.get(`${API_BASE_URL}/candidates?service_id=${selectedService.id}&office=${selectedOffice}`);
           setCandidates([...response.data]);
         } catch (error) {
           console.error("Erreur lors du chargement des candidats :", error);
@@ -244,7 +266,7 @@ function App() {
     } else {
       setCandidates([]);
     }
-  }, [selectedService]);
+  }, [selectedService, selectedOffice]);
 
   const handleAddService = async (newService) => {
     try {
@@ -312,8 +334,9 @@ function App() {
       await api.post(`${API_BASE_URL}/candidates`, {
         ...candidateData,
         service_id: newServiceId,
+        office: selectedOffice,
       });
-      const response = await api.get(`${API_BASE_URL}/candidates?service_id=${selectedService.id}`);
+      const response = await getCandidatesForService(selectedService.id);
       setCandidates([...response.data]);
       await refreshDashboardStats();
       alert("Candidat copié avec succès !");
@@ -326,7 +349,7 @@ function App() {
   const handleAddRevenue = async (formData) => {
     try {
       await api.post(`${API_BASE_URL}/candidates/${selectedCandidate.id}/revenues`, formData);
-      const response = await api.get(`${API_BASE_URL}/candidates?service_id=${selectedService.id}`);
+      const response = await getCandidatesForService(selectedService.id);
       setCandidates([...response.data]);
       setShowAddRevenueModal(false);
       setNewRevenue({ description: "", amount: "", amountHT: "", amountTTC: "", date: "" });
@@ -343,7 +366,7 @@ function App() {
   const handleAddExpense = async (formData) => {
     try {
       await api.post(`${API_BASE_URL}/candidates/${selectedCandidate.id}/expenses`, formData);
-      const response = await api.get(`${API_BASE_URL}/candidates?service_id=${selectedService.id}`);
+      const response = await getCandidatesForService(selectedService.id);
       setCandidates([...response.data]);
       setShowAddExpenseModal(false);
       setNewExpense({ description: "", amount: "", amountHT: "", amountTTC: "", date: "" });
@@ -359,8 +382,8 @@ function App() {
 
   const handleAddGeneralExpense = async (formData) => {
     try {
-      await api.post(`${API_BASE_URL}/general-expenses`, formData);
-      const response = await api.get(`${API_BASE_URL}/general-expenses`);
+      await api.post(`${API_BASE_URL}/general-expenses?office=${selectedOffice}`, { ...formData, office: selectedOffice });
+      const response = await api.get(`${API_BASE_URL}/general-expenses?office=${selectedOffice}`);
       setGeneralExpenses(response.data);
       await refreshDashboardStats();
       alert("Dépense générale ajoutée avec succès !");
@@ -373,7 +396,7 @@ function App() {
   const handleEditGeneralExpense = async (id, formData) => {
     try {
       await api.put(`${API_BASE_URL}/general-expenses/${id}`, formData);
-      const response = await api.get(`${API_BASE_URL}/general-expenses`);
+      const response = await api.get(`${API_BASE_URL}/general-expenses?office=${selectedOffice}`);
       setGeneralExpenses(response.data);
       await refreshDashboardStats();
       alert("Dépense générale modifiée avec succès !");
@@ -386,7 +409,7 @@ function App() {
   const handleDeleteGeneralExpense = async (id) => {
     try {
       await api.delete(`${API_BASE_URL}/general-expenses/${id}`);
-      const response = await api.get(`${API_BASE_URL}/general-expenses`);
+      const response = await api.get(`${API_BASE_URL}/general-expenses?office=${selectedOffice}`);
       setGeneralExpenses(response.data);
       await refreshDashboardStats();
       alert("Dépense générale supprimée avec succès !");
@@ -418,7 +441,8 @@ function App() {
     try {
       const candidateData = {
         ...formData,
-        service_id: selectedService.id
+        service_id: selectedService.id,
+        office: selectedOffice,
       };
       const response = await api.post(`${API_BASE_URL}/candidates`, candidateData);
       const newCandidateId = response.data.id;
@@ -446,7 +470,7 @@ function App() {
         }
       }
 
-      const candidatesResponse = await api.get(`${API_BASE_URL}/candidates?service_id=${selectedService.id}`);
+      const candidatesResponse = await getCandidatesForService(selectedService.id);
       setCandidates([...candidatesResponse.data].reverse());
       setShowCopyCandidateModal(false);
       setCandidateToCopy(null);
@@ -464,10 +488,11 @@ function App() {
       const candidateData = {
         ...formData,
         createdAt: formData.createdAt || new Date().toISOString().slice(0, 16),
-        service_id: selectedService.id
+        service_id: selectedService.id,
+        office: selectedOffice,
       };
       await api.post(`${API_BASE_URL}/candidates`, candidateData);
-      const candidatesResponse = await api.get(`${API_BASE_URL}/candidates?service_id=${selectedService.id}`);
+      const candidatesResponse = await getCandidatesForService(selectedService.id);
       setCandidates([...candidatesResponse.data].reverse());
       setShowAddCandidateModal(false);
       setNewCandidate({
@@ -496,7 +521,7 @@ function App() {
         service_id: selectedService.id
       };
       await api.put(`${API_BASE_URL}/candidates/${formData.id}`, candidateData);
-      const response = await api.get(`${API_BASE_URL}/candidates?service_id=${selectedService.id}`);
+      const response = await getCandidatesForService(selectedService.id);
       setCandidates([...response.data]);
       setSelectedCandidate(response.data.find((c) => c.id === formData.id));
       setShowEditCandidateModal(false);
@@ -538,7 +563,7 @@ function App() {
   const handleSaveRevenue = async (id) => {
     try {
       await api.put(`${API_BASE_URL}/revenues/${id}`, editRevenueData);
-      const response = await api.get(`${API_BASE_URL}/candidates?service_id=${selectedService.id}`);
+      const response = await getCandidatesForService(selectedService.id);
       setCandidates([...response.data]);
       setEditingRevenueId(null);
       setEditRevenueData({ id: null, description: "", amount: "", amountHT: "", amountTTC: "", date: "" });
@@ -569,7 +594,7 @@ function App() {
   const handleSaveExpense = async (id) => {
     try {
       await api.put(`${API_BASE_URL}/expenses/${id}`, editExpenseData);
-      const response = await api.get(`${API_BASE_URL}/candidates?service_id=${selectedService.id}`);
+      const response = await getCandidatesForService(selectedService.id);
       setCandidates([...response.data]);
       setEditingExpenseId(null);
       setEditExpenseData({ id: null, description: "", amount: "", amountHT: "", amountTTC: "", date: "" });
@@ -586,7 +611,7 @@ function App() {
   const handleDeleteRevenue = async (id) => {
     try {
       await api.delete(`${API_BASE_URL}/revenues/${id}`);
-      const response = await api.get(`${API_BASE_URL}/candidates?service_id=${selectedService.id}`);
+      const response = await getCandidatesForService(selectedService.id);
       setCandidates([...response.data]);
       const updatedCandidate = response.data.find(c => c.id === selectedCandidate.id);
       setSelectedCandidate(updatedCandidate);
@@ -601,7 +626,7 @@ function App() {
   const handleDeleteExpense = async (id) => {
     try {
       await api.delete(`${API_BASE_URL}/expenses/${id}`);
-      const response = await api.get(`${API_BASE_URL}/candidates?service_id=${selectedService.id}`);
+      const response = await getCandidatesForService(selectedService.id);
       setCandidates([...response.data]);
       const updatedCandidate = response.data.find(c => c.id === selectedCandidate.id);
       setSelectedCandidate(updatedCandidate);
@@ -616,7 +641,7 @@ function App() {
   const handleDeleteCandidate = async (id) => {
     try {
       await api.delete(`${API_BASE_URL}/candidates/${id}`);
-      const response = await api.get(`${API_BASE_URL}/candidates?service_id=${selectedService.id}`);
+      const response = await getCandidatesForService(selectedService.id);
       setCandidates([...response.data]);
       if (selectedCandidate?.id === id) setSelectedCandidate(null);
       await refreshDashboardStats();
@@ -677,7 +702,7 @@ function App() {
         note: note
       };
       await api.put(`${API_BASE_URL}/candidates/${candidateId}`, candidateData);
-      const response = await api.get(`${API_BASE_URL}/candidates?service_id=${selectedService.id}`);
+      const response = await getCandidatesForService(selectedService.id);
       setCandidates([...response.data]);
       setSelectedCandidate(response.data.find(c => c.id === candidateId));
     } catch (error) {
@@ -779,12 +804,39 @@ function App() {
                 Candidats{selectedService ? ` - ${selectedService.name}` : ''}
               </Nav.Link>
               {userIsAdmin && (
+                <Nav.Link onClick={() => setCurrentPage("comparison")} active={currentPage === "comparison"}>
+                  Comparaison bureaux
+                </Nav.Link>
+              )}
+              {userIsAdmin && (
                 <Nav.Link onClick={() => setCurrentPage("admin")} active={currentPage === "admin"}>
                   Administration
                 </Nav.Link>
               )}
             </Nav>
             <Nav className="ms-auto align-items-center" style={{ gap: 10 }}>
+              {userIsAdmin ? (
+                <Form.Select
+                  size="sm"
+                  aria-label="Bureau actif"
+                  value={selectedOffice}
+                  onChange={(e) => {
+                    setSelectedOffice(e.target.value);
+                    setCandidates([]);
+                    setSelectedCandidate(null);
+                    setSelectedService(null);
+                    setIsCandidatesAccessible(false);
+                  }}
+                  style={{ width: 145 }}
+                >
+                  <option value="tunis">Bureau Tunis</option>
+                  <option value="kebili">Bureau Kébili</option>
+                </Form.Select>
+              ) : (
+                <span className="text-light" style={{ opacity: 0.8 }}>
+                  Bureau {getOffice() === 'kebili' ? 'Kébili' : 'Tunis'}
+                </span>
+              )}
               {username && (
                 <span className="text-light" style={{ opacity: 0.8 }}>
                   {username}
@@ -868,6 +920,10 @@ function App() {
 
         {currentPage === "admin" && userIsAdmin && (
           <AdminPanel appStyles={appStyles} services={services} />
+        )}
+
+        {currentPage === "comparison" && userIsAdmin && (
+          <OfficeComparison stats={officeComparison} />
         )}
 
         {currentPage === "services" && (

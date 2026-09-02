@@ -27,11 +27,13 @@ const AdminPanel = ({ appStyles, services }) => {
     username: '',
     password: '',
     role: 'user',
+    office: 'tunis',
     permissions: {},
     generalExpenseAccess: { view: false, update: false },
   });
   const [editPermissions, setEditPermissions] = useState({});
   const [editRole, setEditRole] = useState('user');
+  const [editOffice, setEditOffice] = useState('tunis');
   const [editGeneralExpenseAccess, setEditGeneralExpenseAccess] = useState({ view: false, update: false });
   const [newPassword, setNewPassword] = useState('');
 
@@ -59,6 +61,7 @@ const AdminPanel = ({ appStyles, services }) => {
       username: '',
       password: '',
       role: 'user',
+      office: 'tunis',
       permissions: emptyPermissions(services),
       generalExpenseAccess: { view: false, update: false },
     });
@@ -68,6 +71,7 @@ const AdminPanel = ({ appStyles, services }) => {
   const openEditModal = (user) => {
     setSelectedUser(user);
     setEditRole(user.role);
+    setEditOffice(user.office || 'tunis');
     const perms = emptyPermissions(services);
     Object.entries(user.permissions || {}).forEach(([id, p]) => {
       if (id === 'general_expenses' || id === 'general-expenses') return;
@@ -120,6 +124,7 @@ const AdminPanel = ({ appStyles, services }) => {
         username: newUser.username,
         password: newUser.password,
         role: newUser.role,
+        office: newUser.office,
         permissions,
       });
       setSuccess('Utilisateur créé avec succès.');
@@ -147,6 +152,7 @@ const AdminPanel = ({ appStyles, services }) => {
 
       await api.put(`${API_BASE_URL}/admin/users/${selectedUser.id}/permissions`, {
         role: editRole,
+        office: editOffice,
         permissions,
       });
       setSuccess('Permissions mises à jour.');
@@ -243,6 +249,7 @@ const AdminPanel = ({ appStyles, services }) => {
             <tr>
               <th>Utilisateur</th>
               <th>Rôle</th>
+              <th>Bureau</th>
               <th>Accès services</th>
               <th>Dépenses générales</th>
               <th>Actions</th>
@@ -257,6 +264,7 @@ const AdminPanel = ({ appStyles, services }) => {
                     {user.role === 'admin' ? 'Admin' : 'Utilisateur'}
                   </Badge>
                 </td>
+                <td>{user.role === 'admin' ? 'Tous les bureaux' : (user.office === 'kebili' ? 'Kébili' : 'Tunis')}</td>
                 <td>
                   {user.role === 'admin' ? (
                     <span className="text-muted">Accès complet</span>
@@ -334,6 +342,15 @@ const AdminPanel = ({ appStyles, services }) => {
               </Form.Select>
             </Form.Group>
             {newUser.role === 'user' && (
+              <Form.Group className="mb-3">
+                <Form.Label>Bureau</Form.Label>
+                <Form.Select value={newUser.office} onChange={(e) => setNewUser({ ...newUser, office: e.target.value })}>
+                  <option value="tunis">Tunis</option>
+                  <option value="kebili">Kébili</option>
+                </Form.Select>
+              </Form.Group>
+            )}
+            {newUser.role === 'user' && (
               <>
                 <Form.Group className="mb-3">
                   <div className="d-flex gap-4 align-items-center">
@@ -389,6 +406,15 @@ const AdminPanel = ({ appStyles, services }) => {
                 <option value="admin">Admin</option>
               </Form.Select>
             </Form.Group>
+            {editRole === 'user' && (
+              <Form.Group className="mb-3">
+                <Form.Label>Bureau</Form.Label>
+                <Form.Select value={editOffice} onChange={(e) => setEditOffice(e.target.value)}>
+                  <option value="tunis">Tunis</option>
+                  <option value="kebili">Kébili</option>
+                </Form.Select>
+              </Form.Group>
+            )}
             {editRole === 'user' && (
               <>
                 <Form.Group className="mb-3">

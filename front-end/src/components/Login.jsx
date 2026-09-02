@@ -23,6 +23,7 @@ const Login = ({ onLogin }) => {
           username: data.username,
           role: data.role,
           permissions: data.permissions || {},
+          office: data.office,
         });
         onLogin();
       } else {
@@ -129,4 +130,4 @@ const Login = ({ onLogin }) => {
   );
 };
 
-export default Login; 
+export default Login;

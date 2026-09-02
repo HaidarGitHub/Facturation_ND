@@ -128,6 +128,22 @@ def user_can_access(user, service_id, level='view'):
     return True
 
 
+def normalize_office(value):
+    return value if value in ('tunis', 'kebili') else 'tunis'
+
+
+def requested_office(user):
+    """Users are locked to their office; admins may select one or all offices."""
+    if user.role != 'admin':
+        return normalize_office(user.office)
+    value = request.args.get('office', 'all')
+    return value if value in ('tunis', 'kebili', 'all') else 'all'
+
+
+def user_can_access_office(user, office):
+    return user.role == 'admin' or normalize_office(user.office) == normalize_office(office)
+
+
 def service_access_required(level='view'):
     """
     Must be used AFTER @token_required.

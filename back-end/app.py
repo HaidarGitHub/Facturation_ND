@@ -18,6 +18,9 @@ from auth import (
     get_permissions,
     user_can_access,
     user_can_access_general_expenses,
+    normalize_office,
+    requested_office,
+    user_can_access_office,
 )
 from admin_routes import admin_bp
 
@@ -98,6 +101,40 @@ def ensure_candidate_creator_column():
     except Exception:
         pass
 
+
+def ensure_office_columns():
+    """Upgrade existing SQLite databases without deleting production data."""
+    try:
+        inspector = db.inspect(db.engine)
+        table_names = set(inspector.get_table_names())
+        with db.engine.begin() as connection:
+            for table in ('user', 'candidate', 'general_expense'):
+                if table not in table_names:
+                    continue
+                columns = {column['name'] for column in inspector.get_columns(table)}
+                if 'office' not in columns:
+                    connection.execute(db.text(
+                        f"ALTER TABLE {table} ADD COLUMN office VARCHAR(20) NOT NULL DEFAULT 'tunis'"
+                    ))
+                connection.execute(db.text(
+                    f"UPDATE {table} SET office = 'tunis' WHERE office IS NULL OR office NOT IN ('tunis', 'kebili')"
+                ))
+    except Exception as exc:
+        app.logger.exception('Could not initialize office columns: %s', exc)
+
+
+def candidate_access_allowed(user, candidate, level='view'):
+    return (
+        user_can_access_office(user, candidate.office)
+        and user_can_access(user, candidate.service_id, level)
+    )
+
+
+def office_for_new_record(user, data=None):
+    if user.role != 'admin':
+        return normalize_office(user.office)
+    return normalize_office((data or {}).get('office') or request.args.get('office'))
+
 # Use local SQLite by default. Only use DATABASE_URL when explicitly requested.
 use_remote_db = os.getenv('USE_REMOTE_DB', '').lower() in ('1', 'true', 'yes')
 if use_remote_db:
@@ -127,6 +164,7 @@ app.register_blueprint(admin_bp)
 with app.app_context():
     db.create_all()
     ensure_candidate_creator_column()
+    ensure_office_columns()
 
 # ---------------------------------------------------------------------------
 # Swagger / OpenAPI docs — visit /apidocs/ once the server is running
@@ -186,6 +224,7 @@ with app.app_context():
             username=default_username,
             password_hash=generate_password_hash(default_password),
             role='admin',
+            office='tunis',
             allowed_service_ids='{}'
         )
         db.session.add(user)
@@ -316,6 +355,9 @@ def get_candidates():
     user = g.current_user
 
     query = Candidate.query
+    office = requested_office(user)
+    if office != 'all':
+        query = query.filter(Candidate.office == office)
     if service_id:
         if not user_can_access(user, service_id, 'view'):
             return jsonify({'message': 'No access to this service'}), 403
@@ -337,6 +379,7 @@ def get_candidates():
         'country': c.country,
         'status': c.status,
         'service_id': c.service_id,
+        'office': c.office,
         'createdByUserId': c.created_by_user_id,
         'createdByUser': c.creator.username if c.creator else None,
         'createdAt': c.created_at.isoformat() if c.created_at else None,
@@ -400,6 +443,7 @@ def add_candidate():
         country=data['country'],
         status=data['status'],
         service_id=data['service_id'],
+        office=office_for_new_record(g.current_user, data),
         created_by_user_id=g.current_user.id,
         created_at=created_at_value,
         note=data.get('note'),
@@ -435,7 +479,7 @@ def update_candidate(id):
     """
     candidate = Candidate.query.get_or_404(id)
 
-    if not user_can_access(g.current_user, candidate.service_id, 'update'):
+    if not candidate_access_allowed(g.current_user, candidate, 'update'):
         return jsonify({'message': 'No update access to this service'}), 403
 
     data = request.json
@@ -485,7 +529,7 @@ def delete_candidate(id):
     """
     candidate = Candidate.query.get_or_404(id)
 
-    if not user_can_access(g.current_user, candidate.service_id, 'update'):
+    if not candidate_access_allowed(g.current_user, candidate, 'update'):
         return jsonify({'message': 'No update access to this service'}), 403
 
     db.session.delete(candidate)
@@ -519,7 +563,7 @@ def upload_pdf(candidate_id):
       403: {description: No update access to this service}
     """
     candidate = Candidate.query.get_or_404(candidate_id)
-    if not user_can_access(g.current_user, candidate.service_id, 'update'):
+    if not candidate_access_allowed(g.current_user, candidate, 'update'):
         return jsonify({'message': 'No update access to this service'}), 403
 
     if 'file' not in request.files:
@@ -571,7 +615,7 @@ def delete_pdf(pdf_id):
     """
     pdf = CandidatePDF.query.get_or_404(pdf_id)
     candidate = Candidate.query.get_or_404(pdf.candidate_id)
-    if not user_can_access(g.current_user, candidate.service_id, 'update'):
+    if not candidate_access_allowed(g.current_user, candidate, 'update'):
         return jsonify({'message': 'No update access to this service'}), 403
 
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], pdf.filename)
@@ -604,7 +648,7 @@ def download_pdf(pdf_id):
     """
     pdf = CandidatePDF.query.get_or_404(pdf_id)
     candidate = Candidate.query.get_or_404(pdf.candidate_id)
-    if not user_can_access(g.current_user, candidate.service_id, 'view'):
+    if not candidate_access_allowed(g.current_user, candidate, 'view'):
         return jsonify({'message': 'No access to this service'}), 403
 
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], pdf.filename)
@@ -647,7 +691,7 @@ def add_revenue(candidate_id):
       403: {description: No update access to this service}
     """
     candidate = Candidate.query.get_or_404(candidate_id)
-    if not user_can_access(g.current_user, candidate.service_id, 'update'):
+    if not candidate_access_allowed(g.current_user, candidate, 'update'):
         return jsonify({'message': 'No update access to this service'}), 403
 
     data = request.json or {}
@@ -688,7 +732,7 @@ def update_revenue(id):
     """
     revenue = Revenue.query.get_or_404(id)
     candidate = Candidate.query.get_or_404(revenue.candidate_id)
-    if not user_can_access(g.current_user, candidate.service_id, 'update'):
+    if not candidate_access_allowed(g.current_user, candidate, 'update'):
         return jsonify({'message': 'No update access to this service'}), 403
 
     data = request.json or {}
@@ -720,7 +764,7 @@ def delete_revenue(id):
     """
     revenue = Revenue.query.get_or_404(id)
     candidate = Candidate.query.get_or_404(revenue.candidate_id)
-    if not user_can_access(g.current_user, candidate.service_id, 'update'):
+    if not candidate_access_allowed(g.current_user, candidate, 'update'):
         return jsonify({'message': 'No update access to this service'}), 403
 
     db.session.delete(revenue)
@@ -753,7 +797,7 @@ def add_expense(candidate_id):
       403: {description: No update access to this service}
     """
     candidate = Candidate.query.get_or_404(candidate_id)
-    if not user_can_access(g.current_user, candidate.service_id, 'update'):
+    if not candidate_access_allowed(g.current_user, candidate, 'update'):
         return jsonify({'message': 'No update access to this service'}), 403
 
     data = request.json or {}
@@ -794,7 +838,7 @@ def update_expense(id):
     """
     expense = Expense.query.get_or_404(id)
     candidate = Candidate.query.get_or_404(expense.candidate_id)
-    if not user_can_access(g.current_user, candidate.service_id, 'update'):
+    if not candidate_access_allowed(g.current_user, candidate, 'update'):
         return jsonify({'message': 'No update access to this service'}), 403
 
     data = request.json or {}
@@ -826,7 +870,7 @@ def delete_expense(id):
     """
     expense = Expense.query.get_or_404(id)
     candidate = Candidate.query.get_or_404(expense.candidate_id)
-    if not user_can_access(g.current_user, candidate.service_id, 'update'):
+    if not candidate_access_allowed(g.current_user, candidate, 'update'):
         return jsonify({'message': 'No update access to this service'}), 403
 
     db.session.delete(expense)
@@ -853,7 +897,11 @@ def get_general_expenses():
     if not user_can_access_general_expenses(g.current_user, 'view'):
         return jsonify({'message': 'No access to general expenses'}), 403
 
-    general_expenses = GeneralExpense.query.order_by(GeneralExpense.date.desc(), GeneralExpense.id.desc()).all()
+    office = requested_office(g.current_user)
+    query = GeneralExpense.query
+    if office != 'all':
+        query = query.filter(GeneralExpense.office == office)
+    general_expenses = query.order_by(GeneralExpense.date.desc(), GeneralExpense.id.desc()).all()
     return jsonify([{
         'id': item.id,
         'description': item.description,
@@ -862,6 +910,7 @@ def get_general_expenses():
         'amountTTC': item.amountTTC,
         'tva': item.tva,
         'date': item.date,
+        'office': item.office,
         'createdAt': item.created_at.isoformat() if item.created_at else None,
     } for item in general_expenses])
 
@@ -896,6 +945,7 @@ def add_general_expense():
         amountTTC=normalize_optional_float(data.get('amountTTC')),
         tva=normalize_optional_float(data.get('tva')),
         date=data.get('date', ''),
+        office=office_for_new_record(g.current_user, data),
     )
     db.session.add(item)
     db.session.commit()
@@ -929,6 +979,8 @@ def update_general_expense(id):
         return jsonify({'message': 'No update access to general expenses'}), 403
 
     item = GeneralExpense.query.get_or_404(id)
+    if not user_can_access_office(g.current_user, item.office):
+        return jsonify({'message': 'No access to this office'}), 403
     data = request.json or {}
     item.description = data.get('description', '')
     item.amount = normalize_required_int(data.get('amount'), 0)
@@ -962,6 +1014,8 @@ def delete_general_expense(id):
         return jsonify({'message': 'No update access to general expenses'}), 403
 
     item = GeneralExpense.query.get_or_404(id)
+    if not user_can_access_office(g.current_user, item.office):
+        return jsonify({'message': 'No access to this office'}), 403
     db.session.delete(item)
     db.session.commit()
     return jsonify({'message': 'Dépense générale supprimée'})
@@ -988,8 +1042,14 @@ def get_dashboard_stats():
     selected_month = request.args.get('month', type=int)
 
     services = Service.query.all()
-    candidates = Candidate.query.all()
-    general_expenses = GeneralExpense.query.all()
+    office = requested_office(g.current_user)
+    candidate_query = Candidate.query
+    general_expense_query = GeneralExpense.query
+    if office != 'all':
+        candidate_query = candidate_query.filter(Candidate.office == office)
+        general_expense_query = general_expense_query.filter(GeneralExpense.office == office)
+    candidates = candidate_query.all()
+    general_expenses = general_expense_query.all()
 
     def matches_period(date_value):
         if selected_year is None and selected_month is None:
@@ -1099,6 +1159,7 @@ def get_dashboard_stats():
         'totalExpensesHT': total_expenses_ht,
         'totalExpenses': total_expenses_ttc,
         'serviceStats': service_stats,
+        'office': office,
     })
 
 @app.route("/api/data", methods=["GET"])
@@ -1164,6 +1225,7 @@ def login():
             'token': token,
             'username': user.username,
             'role': user.role,
+            'office': user.office,
             'permissions': get_permissions(user),
         }), 200
     return jsonify({'message': 'Invalid username or password'}), 401

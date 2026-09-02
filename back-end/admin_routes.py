@@ -5,7 +5,7 @@ from flask import Blueprint, request, jsonify, g
 from werkzeug.security import generate_password_hash
 
 from models import db, User
-from auth import token_required, admin_required
+from auth import token_required, admin_required, normalize_office
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
 
@@ -28,6 +28,7 @@ def list_users():
         'id': u.id,
         'username': u.username,
         'role': u.role,
+        'office': u.office,
         'permissions': json.loads(u.allowed_service_ids or '{}'),
     } for u in users])
 
@@ -64,6 +65,7 @@ def create_user():
     username = data.get('username')
     password = data.get('password')
     role = data.get('role', 'user')
+    office = normalize_office(data.get('office'))
 
     if not username or not password:
         return jsonify({'message': 'username and password are required'}), 400
@@ -78,11 +80,12 @@ def create_user():
         username=username,
         password_hash=generate_password_hash(password),
         role=role,
+        office=office,
         allowed_service_ids=json.dumps(permissions),
     )
     db.session.add(user)
     db.session.commit()
-    return jsonify({'id': user.id, 'username': user.username, 'role': user.role}), 201
+    return jsonify({'id': user.id, 'username': user.username, 'role': user.role, 'office': user.office}), 201
 
 
 @admin_bp.route('/users/<int:user_id>', methods=['DELETE'])
@@ -150,6 +153,8 @@ def update_permissions(user_id):
     user.allowed_service_ids = json.dumps(permissions)
     if 'role' in data and data['role'] in ('admin', 'user'):
         user.role = data['role']
+    if 'office' in data:
+        user.office = normalize_office(data['office'])
 
     db.session.commit()
     return jsonify({'message': 'Permissions updated', 'permissions': permissions})

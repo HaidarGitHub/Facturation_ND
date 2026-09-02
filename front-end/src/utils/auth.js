@@ -2,12 +2,14 @@ const TOKEN_KEY = 'token';
 const USERNAME_KEY = 'username';
 const ROLE_KEY = 'role';
 const PERMISSIONS_KEY = 'permissions';
+const OFFICE_KEY = 'office';
 
-export function saveAuth({ token, username, role, permissions }) {
+export function saveAuth({ token, username, role, permissions, office }) {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USERNAME_KEY, username);
   localStorage.setItem(ROLE_KEY, role);
   localStorage.setItem(PERMISSIONS_KEY, JSON.stringify(permissions || {}));
+  localStorage.setItem(OFFICE_KEY, office || 'tunis');
 }
 
 export function clearAuth() {
@@ -15,6 +17,7 @@ export function clearAuth() {
   localStorage.removeItem(USERNAME_KEY);
   localStorage.removeItem(ROLE_KEY);
   localStorage.removeItem(PERMISSIONS_KEY);
+  localStorage.removeItem(OFFICE_KEY);
 }
 
 export function getToken() {
@@ -27,6 +30,10 @@ export function getUsername() {
 
 export function getRole() {
   return localStorage.getItem(ROLE_KEY);
+}
+
+export function getOffice() {
+  return localStorage.getItem(OFFICE_KEY) || 'tunis';
 }
 
 export function isAdmin() {

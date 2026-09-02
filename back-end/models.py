@@ -17,6 +17,7 @@ class Candidate(db.Model):
     country = db.Column(db.String(50), nullable=False)
     status = db.Column(db.String(20), nullable=False, default="En cours")
     service_id = db.Column(db.Integer, db.ForeignKey('service.id'), nullable=False)
+    office = db.Column(db.String(20), nullable=False, default='tunis', index=True)
     created_by_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     creator = db.relationship('User', foreign_keys=[created_by_user_id], backref='created_candidates')
     type_equivalence = db.Column(db.String(120), nullable=True)
@@ -62,6 +63,7 @@ class GeneralExpense(db.Model):
     amountTTC = db.Column(db.Float, nullable=True)
     tva = db.Column(db.Float, nullable=True)
     date = db.Column(db.String(10), nullable=False)
+    office = db.Column(db.String(20), nullable=False, default='tunis', index=True)
     created_at = db.Column(db.DateTime, nullable=False, default=db.func.now())
 
 class User(db.Model):
@@ -69,6 +71,7 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(512), nullable=False)
     role = db.Column(db.String(20), nullable=False, default='user')  # 'admin' or 'user'
+    office = db.Column(db.String(20), nullable=False, default='tunis')
     # JSON string, e.g. {"1": {"view": true, "update": false}, "3": {"view": true, "update": true}}
     # Keys are Service.id. Ignored entirely for admins (they get full access).
     allowed_service_ids = db.Column(db.Text, nullable=False, default='{}')
